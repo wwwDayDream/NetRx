@@ -1,5 +1,7 @@
-# NetRx
-Offers a way for developers to Hot-Reload their NET Standard 2.1+ & NET Framework 4.7.1+ DLLs from a primary project.
+
+# <Center>NetRx</Center>
+<Center>Offers a way for developers to Hot-Reload their NET Standard 2.1+ & NET Framework 4.7.1+ DLLs from a primary project.</Center>
+
 
 ## Packaged With
 NetRx is packaged with [ImmediateReflection](https://github.com/KeRNeLith/ImmediateReflection) licensed under the [MIT License](https://www.mit.edu/~amini/LICENSE.md), which is an amazing tool that speeds up Reflection calls drastically.
