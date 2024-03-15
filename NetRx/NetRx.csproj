@@ -7,30 +7,11 @@
         <CopyLocalLockFileAssemblies>True</CopyLocalLockFileAssemblies>
         
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <ImmediateReflectionLicense>https://raw.githubusercontent.com/KeRNeLith/ImmediateReflection/master/LICENSE</ImmediateReflectionLicense>
-        <ImmediateReflectionOutDir>$(MSBuildProjectDirectory)/../</ImmediateReflectionOutDir>
-        <ImmediateReflectionOutName>LICENSE.ImmediateReflection.txt</ImmediateReflectionOutName>
-        
         <DebugSymbols>true</DebugSymbols>
         <DebugType>embedded</DebugType>
         <PathMap>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)'))=./</PathMap>
     </PropertyGroup>
 
-    <ItemGroup>
-        <PackageReference Include="ImmediateReflection" Version="2.0.0" IncludeAssets="All"/>
-        
-        <Content Include="../$(ImmediateReflectionOutName)" CopyToOutputDirectory="Always"/>
-    </ItemGroup>
-    <Target Name="DownloadLicenses" BeforeTargets="Build">
-        <DownloadFile
-                Condition="!Exists('$(ImmediateReflectionOutDir)$(ImmediateReflectionOutName)')"
-                SourceUrl="$(ImmediateReflectionLicense)"
-                DestinationFileName="$(ImmediateReflectionOutName)"
-                DestinationFolder="$(ImmediateReflectionOutDir)">
-        </DownloadFile>
-    
-        <!-- Your compile stuff here -->
-    </Target>
     <Target Name="PostBuild" AfterTargets="PostBuildEvent">
         <ZipDirectory DestinationFile="./bin/$(ProjectName).$(Configuration).$(TargetFramework).zip" SourceDirectory="$(OutputPath)" Overwrite="true"/>
     </Target>

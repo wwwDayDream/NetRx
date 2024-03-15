@@ -2,109 +2,80 @@
 # <Center>NetRx</Center>
 <Center>Offers a way for developers to Hot-Reload their NET Standard 2.1+ & NET Framework 4.7.1+ DLLs from a primary project.</Center>
 
-
-## Packaged With
-NetRx is packaged with [ImmediateReflection](https://github.com/KeRNeLith/ImmediateReflection) licensed under the [MIT License](https://www.mit.edu/~amini/LICENSE.md), which is an amazing tool that speeds up Reflection calls drastically.
-Given the nature of being unable to Type the newly loaded DLL's objects to the previous Type (The cast from new type to old type fails.), we have to use Reflection to access methods and members of said instances.  
-
 ## Getting Started
 Head to the Releases page and download the latest release, these are the necessary dependencies you will need to reference in your project <b><u>and</u></b> have resolved in your runtime environment (Generally this means loaded as a dependency and next to your mod). 
 
-You'll be creating a new project of the same TargetFramework as your Main Project. Content in here will be initially loaded as a reference but further builds to an alternate file will reload the new build into the AppDomain.
+Your main project should reference those downloaded Dlls. You should also create a second project of an identical framework to your main project and reference your main project <u>from</u> the secondary project.
 
-The Main Project should reference this new project's output dll or use a Project Reference if it exists within the same solution.
-The Main Project and Secondary Project(s) should output their own DLL's to the runtime directory; <u>Additionally, the secondary project(s) should output a second copy of the file with the `.dll` replaced with `.hotdll`.</u> This "hot dll" will not be File Locked so you can overwrite it while the process is running, as opposed to the regular '.dll' that's loaded as a reference.
-
-With a type created inside the new project you can access it's assembly and call the [Watch overload from `NetRx`](#extension-methods) which will look for the `.hotdll` located next to that assembly.
-
-(Below we assume a type exists in this referenced project called "UpdateableClass" with a Dispose method and a constructor)
+#### Main Project
+In my example I've created this interface in my Main Project that my secondary project's class will inherit from, this allows me to cast newly loaded types back down to a common interface.
 ```csharp
-
-ObjectWrapper TestClass;
-typeof(UpdateableClass).Assembly.Watch((previousAssembly, newAssembly) =>
+public interface IHotLoadClass
 {
-    // Use the Method overload for our ObjectWrapper(If it exists, hence the ?) to call the Dispose method.
-    TestClass?.Method(nameof(UpdateableClass.Dispose))?.Invoke();
-    // Use the CreateHotType overload to create a hot type from the new assembly. 
-    TestClass = newAssembly.CreateHotType<UpdateableClass>();
-    
-    // Here you could use the Method overload or Member overload (for properties and fields) or even just fenangle the raw (object)ObjectWrapper.Object!
+    public int TestProp { get; }
+    public string TestString { get; set; }
+    public void Dispose();
+    public void Test();
 }
 ```
 
-## Reference :: `static class AssemblyExtensions`
-#### Properties
+#### Secondary Project
+In my secondary project I'll implement the interface I've referenced from my main project.
+```csharp
+public class HotLoadable : IHotLoadClass
+{
+    private void Log(object o) => Console.WriteLine("[HotLoadable] " + o);
+    
+    public int TestProp { get; set; } = -1;
+    public string TestString { get; set; } = "Hello";
+    public void Dispose()
+    {
+        Log("Dispose called! 1");
+    }
 
-- `MostRecentlyLoaded`: A dictionary of all assemblies that have been loaded, tracked by `Assembly.GetName().Name`.
-- `DllWatchers`: A list of all `FileSystemWatcher` instances that are monitoring `.hotdll` files.
-
-```C#
-public static Dictionary<string, Assembly> MostRecentlyLoaded { get; }
-public static List<FileSystemWatcher> DllWatchers { get; }
+    public void Test()
+    {
+        Log("Test called! 1");
+    }
+}
 ```
 
-#### Public Delegates
-
-- `HotLoadEvent`: Defines an event to be raised when an assembly is loaded or re-loaded.
-
-```C#
-public delegate void HotLoadEvent(Assembly prevAssembly, Assembly newAssembly);
-``` 
-
-- `MethodCall`: Represents a method in an `ObjectWrapper`.
-
-```C#
-public delegate object MethodCall(params object[] args);
+#### Main Project
+Finally, back in my Main Project, somewhere I want to initialize my other DLL watcher, I can create a new `HotLoader` class one of two ways:
+```csharp
+HotLoader hotLoader = new HotLoader(string pathToHotDll);
+```
+Or with the shorthand that will use the relative path next to your assembly (This assumes <b><u>TypeInMainAssembly</u></b> exists in your Main Project)
+```csharp
+HotLoader hotLoader = typeof(TypeInMainAssembly).Assembly.CreateHotLoader(string fileNameWithExtension)
 ```
 
-- `MemberGet` and `MemberSet`: Delegates which respectively gets and sets the value of a member on an instance.
+Then we can bind to the event for HotLoading.
+```csharp
+IHotLoadClass HotLoadClass = null;
+hotLoader.OnHotLoadOccurred += (prevAssembly, newAssembly) =>
+{
+    // prevAssembly is null the first load.
+    Log(prevAssembly != null ? "Hot reload detected!" : "New load detected!");
+    // Dispose of old if it exists
+    HotLoadClass?.Dispose();
+    // Try to get any IHotLoadClass from the new DLL
+    var hotLoadImplementation = newAssembly.DefinedTypes.FirstOrDefault(typeInfo =>
+        typeof(IHotLoadClass).IsAssignableFrom(typeInfo));
+    if (hotLoadImplementation != null)
+        // Create new hotLoadImplementation
+        HotLoadClass = (IHotLoadClass)Activator.CreateInstance(hotLoadImplementation);
 
-```C#
-public delegate THot MemberGet<out THot>();
-public delegate void MemberSet<in THot>(THot value);
+    // Call some test method if it exists
+    HotLoadClass?.Test();
+};
+```
+And actually start watching for updates
+```csharp
+hotLoader.Watch();
 ```
 
-#### Extension Methods
+### Finally
+The Secondary Project should be setup to copy it's dll to the runtime directory with any extension *except* `.dll` as some runtimes might auto-load it, therefore locking the file. I've chosen the extension `.hotdll` for personal use. 
 
-- `Watch`: This method monitors a `.hotdll` file for changes and triggers an event when it is updated.
-
-```C# 
-public static void Watch(this Assembly assembly, HotLoadEvent onLoad, bool invokeOnLoad = true)
-```
-
-- `OnLoad`: This method invokes the passed `HotLoadEvent` when a matching `LoadOccurred` event is raised.
-- This is automatically called by the `Watch` method with your `onLoad` entry.
-
-```C# 
-public static void OnLoad(this Assembly assem, HotLoadEvent @event)
-```
-
-- `Method`: This <u>returned MethodCall</u> gets and invokes a method on an instance wrapped in an `ObjectWrapper`.
-
-```C# 
-public static MethodCall Method(this ObjectWrapper wrapper, string methodName)
-```
-
-- `Member`: This method provides a Get/Set option for Properties or Fields wrapped in the ObjectWrapper.
-
-```C#
-public static (MemberGet<THot> Get, MemberSet<THot> Set) Member<THot>(this ObjectWrapper wrapper, string memberName)
-```
-
-- `CreateHotType`: This method creates an object by getting its type from the assembly by the given hot type `THot`'s FullName.
-
-```C#
-public static ObjectWrapper CreateHotType<THot>(this Assembly assem, params object[] args)
-```
-
-- `GetHotType`: Gets the `Type` from the Assembly that matches the fullname of `THot`.
-
-```C#
-public static ImmediateType GetHotType<THot>(this Assembly assem)
-```
-
-- `LastLoaded`: Returns the most recently loaded assembly with a matching name.
-
-```C#
-public static Assembly LastLoaded(this Assembly assem)
-```
+Now when you build your second project the `*.hotdll` will be copied over and detected by the hotLoader, which will load it by bytes and provide that and the prior assembly to the `OnHotLoadOccurred` event.
